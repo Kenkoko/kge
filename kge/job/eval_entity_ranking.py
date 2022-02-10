@@ -207,18 +207,29 @@ class EntityRankingJob(EvaluationJob):
             # due to floating point issues.
             # We use score_sp and score_po to stay consistent with scoring used for
             # further evaluation.
-            unique_o, unique_o_inverse = torch.unique(o, return_inverse=True)
-            o_true_scores = torch.gather(
-                self.model.score_sp(s, p, unique_o),
-                1,
-                unique_o_inverse.view(-1, 1),
-            ).view(-1)
-            unique_s, unique_s_inverse = torch.unique(s, return_inverse=True)
-            s_true_scores = torch.gather(
-                self.model.score_po(p, o, unique_s),
-                1,
-                unique_s_inverse.view(-1, 1),
-            ).view(-1)
+            true_scores = dict()
+            for query_type in self.query_types:
+                if 'sp_to_o' == query_type:
+                    unique_o, unique_o_inverse = torch.unique(o, return_inverse=True)
+                    true_scores[query_type] = torch.gather(
+                        self.model.score_sp(s, p, unique_o),
+                        1,
+                        unique_o_inverse.view(-1, 1),
+                    ).view(-1)
+                if 'po_to_s' == query_type:
+                    unique_s, unique_s_inverse = torch.unique(s, return_inverse=True)
+                    true_scores[query_type] = torch.gather(
+                        self.model.score_po(p, o, unique_s),
+                        1,
+                        unique_s_inverse.view(-1, 1),
+                    ).view(-1)
+                if 'so_to_p' == query_type:
+                    unique_p, unique_p_inverse = torch.unique(s, return_inverse=True)
+                    true_scores[query_type] = torch.gather(
+                        self.model.score_so(s, o, unique_p),
+                        1,
+                        unique_p_inverse.view(-1, 1),
+                    ).view(-1)
 
             # default dictionary storing rank and num_ties for each key in rankings
             # as list of len 2: [rank, num_ties]
@@ -251,11 +262,6 @@ class EntityRankingJob(EvaluationJob):
                 relation_chunk_end = min(relation_chunk_size * (chunk_number + 1), num_relations)
 
                 # compute scores of chunk
-                true_scores = {
-                    'sp_to_o': o_true_scores,
-                    'po_to_s': s_true_scores,
-                    'so_to_p': self.model.score_spo(s, p, o, 'p').view(-1),
-                }
                 (
                     scores,
                     e_in_chunk_mask,
