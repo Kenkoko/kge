@@ -822,7 +822,7 @@ def hist_all(hists, s, p, o, ranks, job, **kwargs):
         hist_head.index_add_(0, ranks_unique, ranks_count.float())
 
 
-def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+def hist_per_relation_type(hists, s, p, o, ranks, job, **kwargs):
     for rel_type, rels in job.dataset.index("relations_per_type").items():
         __initialize_hist(hists, rel_type, job)
         hist = hists[rel_type]
@@ -831,6 +831,9 @@ def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
             __initialize_hist(hists, f"{rel_type}_tail", job)
             hist_head = hists[f"{rel_type}_head"]
             hist_tail = hists[f"{rel_type}_tail"]
+
+        o_ranks = ranks['sp_to_o']
+        s_ranks = ranks['po_to_s']
 
         mask = [_p in rels for _p in p.tolist()]
         for r, m in zip(o_ranks, mask):
@@ -846,13 +849,14 @@ def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
                     hist_head[r] += 1
 
 
-def hist_per_frequency_percentile(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+def hist_per_frequency_percentile(hists, s, p, o, ranks, job, **kwargs):
     # initialize
     frequency_percs = job.dataset.index("frequency_percentiles")
     for arg, percs in frequency_percs.items():
         for perc, value in percs.items():
             __initialize_hist(hists, "{}_{}".format(arg, perc), job)
-
+    o_ranks = ranks['sp_to_o']
+    s_ranks = ranks['po_to_s']
     # go
     for perc in frequency_percs["subject"].keys():  # same for relation and object
         for r, m_s, m_r in zip(
