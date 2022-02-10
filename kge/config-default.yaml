@@ -535,6 +535,11 @@ entity_ranking:
     relation_type: False          # 1-to-1, 1-to-N, N-to-1, N-to-N
     argument_frequency: False     # 25%, 50%, 75%, top quantiles per argument
 
+  # Query types used during evaluating.
+  query_types:
+    sp_to_o: True
+    po_to_s: True
+    so_to_p: False
 
 # specific configuration options for evaluation via training loss
 training_loss:
