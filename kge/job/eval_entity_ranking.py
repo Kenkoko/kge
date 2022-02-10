@@ -110,6 +110,15 @@ class EntityRankingJob(EvaluationJob):
     @torch.no_grad()
     def _evaluate(self):
         num_entities = self.dataset.num_entities()
+        num_relations = self.dataset.num_relations()
+
+        # number of total entries 
+        num_elements = 0
+        for query_typle in self.query_types:
+            if query_typle == 'so_to_p':
+                num_elements += num_relations 
+            else:
+                num_elements += num_entities
 
         # we also filter with test data if requested
         filter_with_test = "test" not in self.filter_splits and self.filter_with_test
@@ -175,7 +184,7 @@ class EntityRankingJob(EvaluationJob):
                 # create sparse labels tensor
                 test_labels = kge.job.util.coord_to_sparse_tensor(
                     len(batch),
-                    2 * num_entities,
+                    num_elements,
                     test_label_coords,
                     self.device,
                     float("Inf"),
@@ -184,7 +193,7 @@ class EntityRankingJob(EvaluationJob):
 
             # create sparse labels tensor
             labels = kge.job.util.coord_to_sparse_tensor(
-                len(batch), 2 * num_entities, label_coords, self.device, float("Inf")
+                len(batch), num_elements, label_coords, self.device, float("Inf")
             )
             labels_for_ranking["_filt"] = labels
 
