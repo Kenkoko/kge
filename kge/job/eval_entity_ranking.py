@@ -86,21 +86,21 @@ class EntityRankingJob(EvaluationJob):
         label_coords = []
         batch = torch.cat(batch).reshape((-1, 3))
         for split in self.filter_splits:
-            split_label_coords = kge.job.util.get_sp_po_coords_from_spo_batch(
-                batch,
-                self.dataset.num_entities(),
-                self.dataset.index(f"{split}_sp_to_o"),
-                self.dataset.index(f"{split}_po_to_s"),
+            split_label_coords = kge.job.util.get_coords_from_spo_batch(
+                batch=batch,
+                dataset=self.dataset,
+                query_types=self.query_types,
+                set_type=split
             )
             label_coords.append(split_label_coords)
         label_coords = torch.cat(label_coords)
 
         if "test" not in self.filter_splits and self.filter_with_test:
-            test_label_coords = kge.job.util.get_sp_po_coords_from_spo_batch(
-                batch,
-                self.dataset.num_entities(),
-                self.dataset.index("test_sp_to_o"),
-                self.dataset.index("test_po_to_s"),
+            test_label_coords = kge.job.util.get_coords_from_spo_batch(
+                batch=batch,
+                dataset=self.dataset,
+                query_types=self.query_types,
+                set_type="test"
             )
         else:
             test_label_coords = torch.zeros([0, 2], dtype=torch.long)
