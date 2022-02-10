@@ -324,6 +324,12 @@ KvsAll:
     s_o: False
     _po: True
 
+  # Weigth for each query
+  query_weight:
+      _po: 1
+      s_o: 1
+      sp_: 1
+
 # Options for negative sampling training (train.type=="negative_sampling")
 negative_sampling:
   class_name: TrainingJobNegativeSampling

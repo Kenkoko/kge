@@ -81,6 +81,9 @@ class TrainingJobKvsAll(TrainingJob):
             for key, enabled in self.config.get("KvsAll.query_types").items()
             if enabled
         ]
+        
+        # determine query weights
+        self.query_weight = self.config.get("KvsAll.query_weight")
 
         # corresponding indexes
         self.query_indexes: List[KvsAllIndex] = []
@@ -287,6 +290,11 @@ class TrainingJobKvsAll(TrainingJob):
                 loss_value = (
                     self.loss(scores, labels_for_query_type[query_type]) / batch_size
                 )
+
+                # Apply query weight
+                weight = self.query_weight[query_type]
+                loss_value = weight*loss_value
+                
                 result.avg_loss += loss_value.item()
                 result.forward_time += time.time()
                 result.backward_time -= time.time()
