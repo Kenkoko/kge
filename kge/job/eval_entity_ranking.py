@@ -1,7 +1,7 @@
 import math
 import time
 import sys
-from typing import List, Union
+from typing import List, Tuple, Union
 
 import torch
 from torch import Tensor
@@ -659,7 +659,7 @@ num_ties for each true score.
 
     def _get_ranks_and_num_ties(
         self, scores: torch.Tensor, true_scores: torch.Tensor
-    ) -> (torch.Tensor, torch.Tensor):
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Returns rank and number of ties of each true score in scores.
 
         :param scores: batch_size x entities tensor of scores
