@@ -28,6 +28,13 @@ class EntityRankingJob(EvaluationJob):
         if self.eval_split not in self.filter_splits:
             self.filter_splits.append(self.eval_split)
 
+        self.query_types = [
+            key
+            for key, enabled in self.config.get("entity_ranking.query_types").items()
+            if enabled
+        ]
+        assert len(self.query_types) > 0 # have at least one query type during evaluation 
+
         max_k = min(
             self.dataset.num_entities(),
             max(self.config.get("entity_ranking.hits_at_k_s")),
@@ -58,11 +65,11 @@ class EntityRankingJob(EvaluationJob):
         # create data and precompute indexes
         self.triples = self.dataset.split(self.config.get("eval.split"))
         for split in self.filter_splits:
-            self.dataset.index(f"{split}_sp_to_o")
-            self.dataset.index(f"{split}_po_to_s")
+            for query_type in self.query_types:
+                self.dataset.index(f"{split}_{query_type}")
         if "test" not in self.filter_splits and self.filter_with_test:
-            self.dataset.index("test_sp_to_o")
-            self.dataset.index("test_po_to_s")
+            for query_type in self.query_types:
+                self.dataset.index(f"test_{query_type}")
 
         # and data loader
         self.loader = torch.utils.data.DataLoader(
