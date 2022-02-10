@@ -1,8 +1,10 @@
 import math
 import time
 import sys
+from typing import List, Union
 
 import torch
+from torch import Tensor
 import kge.job
 from kge.job import EvaluationJob, Job
 from kge import Config, Dataset
@@ -230,53 +232,76 @@ class EntityRankingJob(EvaluationJob):
             # calculate scores in chunks to not have the complete score matrix in memory
             # a chunk here represents a range of entity_values to score against
             if self.config.get("entity_ranking.chunk_size") > -1:
-                chunk_size = self.config.get("entity_ranking.chunk_size")
+                entity_chunk_size = self.config.get("entity_ranking.chunk_size")
             else:
-                chunk_size = self.dataset.num_entities()
+                entity_chunk_size = self.dataset.num_entities()
 
+            if 'sp_to_o' in self.query_types or 'po_to_s' in self.query_types:
+                num_chunks = math.ceil(num_entities / entity_chunk_size)
+            else:
+                num_chunks = math.ceil(num_relations / entity_chunk_size)
+
+            relation_chunk_size = math.ceil(num_relations / num_chunks) if 'so_to_p' in self.query_types else 0
+            
             # process chunk by chunk
-            for chunk_number in range(math.ceil(num_entities / chunk_size)):
-                chunk_start = chunk_size * chunk_number
-                chunk_end = min(chunk_size * (chunk_number + 1), num_entities)
+            for chunk_number in range(num_chunks):
+                entity_chunk_start = entity_chunk_size * chunk_number
+                entity_chunk_end = min(entity_chunk_size * (chunk_number + 1), num_entities)
+                relation_chunk_start = relation_chunk_size * chunk_number
+                relation_chunk_end = min(relation_chunk_size * (chunk_number + 1), num_relations)
 
                 # compute scores of chunk
-                scores = self.model.score_sp_po(
-                    s, p, o, torch.arange(chunk_start, chunk_end, device=self.device)
+                true_scores = {
+                    'sp_to_o': self.model.score_spo(s, p, o, 'o').view(-1),
+                    'po_to_s': self.model.score_spo(s, p, o, 's').view(-1),
+                    'so_to_p': self.model.score_spo(s, p, o, 'p').view(-1),
+                }
+                (
+                    scores,
+                    e_in_chunk_mask,
+                    e_in_chunk
+                ) = self._get_score(
+                    batch, true_scores, 
+                    entity_chunk_start, entity_chunk_end,
+                    relation_chunk_start, relation_chunk_end
                 )
-                scores_sp = scores[:, : chunk_end - chunk_start]
-                scores_po = scores[:, chunk_end - chunk_start :]
 
+                # scores = self.model.score_sp_po(
+                #     s, p, o, torch.arange(entity_chunk_start, entity_chunk_end, device=self.device)
+                # )
+                scores_sp = scores['sp_to_o']
+                scores_po = scores['po_to_s']
                 # replace the precomputed true_scores with the ones occurring in the
                 # scores matrix to avoid floating point issues
-                s_in_chunk_mask = (chunk_start <= s) & (s < chunk_end)
-                o_in_chunk_mask = (chunk_start <= o) & (o < chunk_end)
-                o_in_chunk = (o[o_in_chunk_mask] - chunk_start).long()
-                s_in_chunk = (s[s_in_chunk_mask] - chunk_start).long()
+                # s_in_chunk_mask = (entity_chunk_start <= s) & (s < entity_chunk_end)
+                # o_in_chunk_mask = (entity_chunk_start <= o) & (o < entity_chunk_end)
+                # o_in_chunk = (o[o_in_chunk_mask] - entity_chunk_start).long()
+                # s_in_chunk = (s[s_in_chunk_mask] - entity_chunk_start).long()
+
+                # assert torch.equal(s_in_chunk_mask, e_in_chunk_mask['po_to_s'])
+                # assert torch.equal(o_in_chunk_mask, e_in_chunk_mask['sp_to_o'])
+                # assert torch.equal(o_in_chunk, e_in_chunk['sp_to_o'])
+                # assert torch.equal(s_in_chunk, e_in_chunk['po_to_s'])
 
                 # check that scoring is consistent up to configured tolerance
                 # if this is not the case, evaluation metrics may be artificially inflated
-                close_check = torch.allclose(
-                    scores_sp[o_in_chunk_mask, o_in_chunk],
-                    o_true_scores[o_in_chunk_mask],
-                    rtol=self.tie_rtol,
-                    atol=self.tie_atol,
-                )
-                close_check &= torch.allclose(
-                    scores_po[s_in_chunk_mask, s_in_chunk],
-                    s_true_scores[s_in_chunk_mask],
-                    rtol=self.tie_rtol,
-                    atol=self.tie_atol,
-                )
+                close_check = True
+                for query_type in self.query_types:
+                    close_check = torch.allclose(
+                        scores[query_type][e_in_chunk_mask[query_type], e_in_chunk[query_type]],
+                        true_scores[query_type][e_in_chunk_mask[query_type]],
+                        rtol=self.tie_rtol,
+                        atol=self.tie_atol,
+                    )
                 if not close_check:
-                    diff_a = torch.abs(
-                        scores_sp[o_in_chunk_mask, o_in_chunk]
-                        - o_true_scores[o_in_chunk_mask]
-                    )
-                    diff_b = torch.abs(
-                        scores_po[s_in_chunk_mask, s_in_chunk]
-                        - s_true_scores[s_in_chunk_mask]
-                    )
-                    diff_all = torch.cat((diff_a, diff_b))
+                    diff_all = dict()
+                    for query_type in self.query_types:
+                        diff_all[query_type] = torch.abs(
+                            scores[query_type][e_in_chunk_mask[query_type], e_in_chunk[query_type]]
+                            - true_scores[query_type][e_in_chunk_mask[query_type]]
+                        )
+                    print(tuple(diff_all.values()))
+                    diff_all = torch.cat(tuple(diff_all.values()))
                     self.config.log(
                         f"Tie-handling: mean difference between scores was: {diff_all.mean()}."
                     )
@@ -296,13 +321,14 @@ class EntityRankingJob(EvaluationJob):
                     else:
                         # densify the needed part of the sparse labels tensor
                         labels_chunk = self._densify_chunk_of_labels(
-                            labels_for_ranking[ranking], chunk_start, chunk_end
+                            labels_for_ranking[ranking], entity_chunk_start, entity_chunk_end
                         )
 
                         # remove current example from labels
-                        labels_chunk[o_in_chunk_mask, o_in_chunk] = 0
+                        e_in_chunk_mask['sp_to_o']
+                        labels_chunk[e_in_chunk_mask['sp_to_o'], e_in_chunk['sp_to_o']] = 0
                         labels_chunk[
-                            s_in_chunk_mask, s_in_chunk + (chunk_end - chunk_start)
+                            e_in_chunk_mask['po_to_s'], e_in_chunk['po_to_s'] + (entity_chunk_end - entity_chunk_start)
                         ] = 0
 
                     # compute partial ranking and filter the scores (sets scores of true
@@ -663,6 +689,51 @@ num_ties for each true score.
             metrics["hits_at_{}{}".format(k, suffix)] = hits_at_k[k - 1]
 
         return metrics
+
+    def _get_score(
+        self, 
+        batch: Union[Tensor, List[Tensor]], true_scores: dict, 
+        entity_chunk_start: int, entity_chunk_end: int,
+        relation_chunk_start: int, relation_chunk_end: int
+    ):
+        scores = dict()
+        element_in_chunk_mask = dict()
+        element_in_chunk = dict()
+        s, p, o = batch[:, 0], batch[:, 1], batch[:, 2]
+        for query_type in self.query_types:
+            if query_type == 'sp_to_o':
+                pred_entity = o
+                entity_subset = torch.arange(entity_chunk_start, entity_chunk_end, device=self.device)
+                scores[query_type] = self.model.score_sp(
+                    s, p, entity_subset
+                )
+                chunk_start = entity_chunk_start
+                chunk_end = entity_chunk_end
+            if query_type == 'po_to_s':
+                pred_entity = s
+                entity_subset = torch.arange(entity_chunk_start, entity_chunk_end, device=self.device)
+                scores[query_type] = self.model.score_po(
+                    p, o, entity_subset 
+                )
+                chunk_start = entity_chunk_start
+                chunk_end = entity_chunk_end
+            if query_type == 'so_to_p':
+                pred_entity = p
+                relation_subset = torch.arange(relation_chunk_start, relation_chunk_end, device=self.device)
+                scores[query_type] = self.model.score_so(
+                    s, o, relation_subset
+                )
+                chunk_start = relation_chunk_start
+                chunk_end = relation_chunk_end
+            # replace the precomputed true_scores with the ones occurring in the
+            # scores matrix to avoid floating point issues
+            element_in_chunk_mask[query_type] = (chunk_start <= pred_entity) & (pred_entity < chunk_end)
+            element_in_chunk[query_type] = (
+                pred_entity[element_in_chunk_mask[query_type]] - chunk_start
+            ).long()
+            scores[query_type][element_in_chunk_mask[query_type], element_in_chunk[query_type]] = true_scores[query_type][element_in_chunk_mask[query_type]]
+        return scores, element_in_chunk_mask, element_in_chunk
+
 
 
 # HISTOGRAM COMPUTATION ###############################################################
