@@ -252,8 +252,8 @@ class EntityRankingJob(EvaluationJob):
 
                 # compute scores of chunk
                 true_scores = {
-                    'sp_to_o': self.model.score_spo(s, p, o, 'o').view(-1),
-                    'po_to_s': self.model.score_spo(s, p, o, 's').view(-1),
+                    'sp_to_o': o_true_scores,
+                    'po_to_s': s_true_scores,
                     'so_to_p': self.model.score_spo(s, p, o, 'p').view(-1),
                 }
                 (
@@ -269,8 +269,8 @@ class EntityRankingJob(EvaluationJob):
                 # scores = self.model.score_sp_po(
                 #     s, p, o, torch.arange(entity_chunk_start, entity_chunk_end, device=self.device)
                 # )
-                scores_sp = scores['sp_to_o']
-                scores_po = scores['po_to_s']
+                # scores_sp = scores['sp_to_o']
+                # scores_po = scores['po_to_s']
                 # replace the precomputed true_scores with the ones occurring in the
                 # scores matrix to avoid floating point issues
                 # s_in_chunk_mask = (entity_chunk_start <= s) & (s < entity_chunk_end)
@@ -354,49 +354,65 @@ class EntityRankingJob(EvaluationJob):
                 # we are done with the chunk
 
             # We are done with all chunks; calculate final ranks from counts
-            s_ranks = self._get_ranks(
-                ranks_and_ties_for_ranking["s_raw"][0],
-                ranks_and_ties_for_ranking["s_raw"][1],
-            )
-            o_ranks = self._get_ranks(
-                ranks_and_ties_for_ranking["o_raw"][0],
-                ranks_and_ties_for_ranking["o_raw"][1],
-            )
-            s_ranks_filt = self._get_ranks(
-                ranks_and_ties_for_ranking["s_filt"][0],
-                ranks_and_ties_for_ranking["s_filt"][1],
-            )
-            o_ranks_filt = self._get_ranks(
-                ranks_and_ties_for_ranking["o_filt"][0],
-                ranks_and_ties_for_ranking["o_filt"][1],
-            )
+            ranks = dict()
+            ranks_filt = dict()
+            for query_type in self.query_types:
+                pred_e = query_type[-1]
+                ranks[query_type] = self._get_ranks(
+                    ranks_and_ties_for_ranking[f"{pred_e}_raw"][0],
+                    ranks_and_ties_for_ranking[f"{pred_e}_raw"][1],
+                )
+                ranks_filt[query_type] = self._get_ranks(
+                    ranks_and_ties_for_ranking[f"{pred_e}_filt"][0],
+                    ranks_and_ties_for_ranking[f"{pred_e}_filt"][1],
+                )
+            # s_ranks = self._get_ranks(
+            #     ranks_and_ties_for_ranking["s_raw"][0],
+            #     ranks_and_ties_for_ranking["s_raw"][1],
+            # )
+            # o_ranks = self._get_ranks(
+            #     ranks_and_ties_for_ranking["o_raw"][0],
+            #     ranks_and_ties_for_ranking["o_raw"][1],
+            # )
+            # s_ranks_filt = self._get_ranks(
+            #     ranks_and_ties_for_ranking["s_filt"][0],
+            #     ranks_and_ties_for_ranking["s_filt"][1],
+            # )
+            # o_ranks_filt = self._get_ranks(
+            #     ranks_and_ties_for_ranking["o_filt"][0],
+            #     ranks_and_ties_for_ranking["o_filt"][1],
+            # )
+
+            # assert torch.equal(o_ranks, ranks['sp_to_o'])
+            # assert torch.equal(s_ranks, ranks['po_to_s'])
+            # assert torch.equal(o_ranks_filt, ranks_filt['sp_to_o'])
+            # assert torch.equal(s_ranks_filt, ranks_filt['po_to_s'])
+
 
             # Update the histograms of of raw ranks and filtered ranks
             batch_hists = dict()
             batch_hists_filt = dict()
             for f in self.hist_hooks:
-                f(batch_hists, s, p, o, s_ranks, o_ranks, job=self)
-                f(batch_hists_filt, s, p, o, s_ranks_filt, o_ranks_filt, job=self)
+                f(batch_hists, s, p, o, ranks, job=self)
+                f(batch_hists_filt, s, p, o, ranks_filt, job=self)
 
             # and the same for filtered_with_test ranks
             if filter_with_test:
+                ranks_filt_test = dict()
                 batch_hists_filt_test = dict()
-                s_ranks_filt_test = self._get_ranks(
-                    ranks_and_ties_for_ranking["s_filt_test"][0],
-                    ranks_and_ties_for_ranking["s_filt_test"][1],
-                )
-                o_ranks_filt_test = self._get_ranks(
-                    ranks_and_ties_for_ranking["o_filt_test"][0],
-                    ranks_and_ties_for_ranking["o_filt_test"][1],
-                )
+                for query_type in self.query_types:
+                    pred_entity = query_type[-1]
+                    ranks_filt_test[query_type] = self._get_ranks(
+                        ranks_and_ties_for_ranking[f"{pred_entity}_filt_test"][0],
+                        ranks_and_ties_for_ranking[f"{pred_entity}_filt_test"][1],
+                    )
                 for f in self.hist_hooks:
                     f(
                         batch_hists_filt_test,
                         s,
                         p,
                         o,
-                        s_ranks_filt_test,
-                        o_ranks_filt_test,
+                        ranks_filt_test,
                         job=self,
                     )
 
@@ -418,28 +434,18 @@ class EntityRankingJob(EvaluationJob):
                         p[i].item(),
                         o[i].item(),
                     )
-                    if filter_with_test:
-                        entry["rank_filtered_with_test"] = (
-                            o_ranks_filt_test[i].item() + 1
-                        )
-                    self.trace(
-                        event="example_rank",
-                        task="sp",
-                        rank=o_ranks[i].item() + 1,
-                        rank_filtered=o_ranks_filt[i].item() + 1,
-                        **entry,
-                    )
-                    if filter_with_test:
-                        entry["rank_filtered_with_test"] = (
-                            s_ranks_filt_test[i].item() + 1
-                        )
-                    self.trace(
-                        event="example_rank",
-                        task="po",
-                        rank=s_ranks[i].item() + 1,
-                        rank_filtered=s_ranks_filt[i].item() + 1,
-                        **entry,
-                    )
+                    for query_type in self.query_types:
+                        if filter_with_test:
+                            entry["rank_filtered_with_test"] = (
+                                ranks_filt_test[query_type][i].item() + 1
+                            )
+                            self.trace(
+                                event="example_rank",
+                                task=query_type[:1],
+                                rank=ranks[query_type][i].item() + 1,
+                                rank_filtered=ranks_filt[query_type][i].item() + 1,
+                                **entry,
+                            )
 
             # Compute the batch metrics for the full histogram (key "all")
             metrics = self._compute_metrics(batch_hists["all"])
@@ -784,7 +790,7 @@ def __initialize_hist(hists, key, job):
         )
 
 
-def hist_all(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
+def hist_all(hists, s, p, o, ranks, job, **kwargs):
     """Create histogram of all subject/object ranks (key: "all").
 
     `hists` a dictionary of histograms to update; only key "all" will be affected. `s`,
@@ -800,13 +806,14 @@ def hist_all(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
         hist_tail = hists["tail"]
 
     hist = hists["all"]
-    o_ranks_unique, o_ranks_count = torch.unique(o_ranks, return_counts=True)
-    s_ranks_unique, s_ranks_count = torch.unique(s_ranks, return_counts=True)
-    hist.index_add_(0, o_ranks_unique, o_ranks_count.float())
-    hist.index_add_(0, s_ranks_unique, s_ranks_count.float())
+    for query_type in ranks.keys():
+        ranks_unique, ranks_count = torch.unique(ranks[query_type], return_counts=True)
+        hist.index_add_(0, ranks_unique, ranks_count.float())
     if job.head_and_tail:
-        hist_tail.index_add_(0, o_ranks_unique, o_ranks_count.float())
-        hist_head.index_add_(0, s_ranks_unique, s_ranks_count.float())
+        ranks_unique, ranks_count = torch.unique(ranks['sp_to_o'], return_counts=True)
+        hist_tail.index_add_(0, ranks_unique, ranks_count.float())
+        ranks_unique, ranks_count = torch.unique(ranks['po_to_s'], return_counts=True)
+        hist_head.index_add_(0, ranks_unique, ranks_count.float())
 
 
 def hist_per_relation_type(hists, s, p, o, s_ranks, o_ranks, job, **kwargs):
