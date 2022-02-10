@@ -321,11 +321,12 @@ class EntityRankingJob(EvaluationJob):
                     else:
                         # densify the needed part of the sparse labels tensor
                         labels_chunk = self._densify_chunk_of_labels(
-                            labels_for_ranking[ranking], entity_chunk_start, entity_chunk_end
+                            labels_for_ranking[ranking],
+                            entity_chunk_start, entity_chunk_end,
+                            relation_chunk_start, relation_chunk_end,
                         )
 
                         # remove current example from labels
-                        e_in_chunk_mask['sp_to_o']
                         labels_chunk[e_in_chunk_mask['sp_to_o'], e_in_chunk['sp_to_o']] = 0
                         labels_chunk[
                             e_in_chunk_mask['po_to_s'], e_in_chunk['po_to_s'] + (entity_chunk_end - entity_chunk_start)
@@ -529,7 +530,9 @@ class EntityRankingJob(EvaluationJob):
         )
 
     def _densify_chunk_of_labels(
-        self, labels: torch.Tensor, chunk_start: int, chunk_end: int
+        self, labels: torch.Tensor, 
+        entity_chunk_start: int, entity_chunk_end: int,
+        relation_chunk_start: int, relation_chunk_end: int,
     ) -> torch.Tensor:
         """Creates a dense chunk of a sparse label tensor.
 
@@ -549,28 +552,68 @@ class EntityRankingJob(EvaluationJob):
         the po chunk.
 
         """
+        # intialize
         num_entities = self.dataset.num_entities()
+        num_relations = self.dataset.num_relations()
         indices = labels._indices()
-        mask_sp = (chunk_start <= indices[1, :]) & (indices[1, :] < chunk_end)
-        mask_po = ((chunk_start + num_entities) <= indices[1, :]) & (
-            indices[1, :] < (chunk_end + num_entities)
-        )
-        indices_sp_chunk = indices[:, mask_sp]
-        indices_sp_chunk[1, :] = indices_sp_chunk[1, :] - chunk_start
-        indices_po_chunk = indices[:, mask_po]
-        indices_po_chunk[1, :] = (
-            indices_po_chunk[1, :] - num_entities - chunk_start * 2 + chunk_end
-        )
-        indices_chunk = torch.cat((indices_sp_chunk, indices_po_chunk), dim=1)
+        indices_chunk = {}
+        mask = {}
+        previous_chunk_size = 0
+        previous_elements = 0
+        start_point = 0
+        total_chunk_size = 0
+        
+        #go
+        for query_type in self.query_types:
+            chunk_start = relation_chunk_start if query_type == 'so_to_p' else entity_chunk_start
+            chunk_end = relation_chunk_end if query_type == 'so_to_p' else entity_chunk_end
+
+            mask[query_type] = (start_point + chunk_start <= indices[1, :]) & (indices[1, :] < start_point + chunk_end)
+            indices_chunk[query_type] = indices[:, mask[query_type]]
+            indices_chunk[query_type][1, :] = (
+                indices_chunk[query_type][1, :] - chunk_start - previous_elements + previous_chunk_size 
+                )
+
+            previous_elements += num_relations if query_type == 'so_to_p' else num_entities
+            start_point += previous_elements
+            previous_chunk_size = chunk_end - chunk_start
+            total_chunk_size += previous_chunk_size
+
+        final_mask = mask[self.query_types[0]]
+        for query_type in self.query_types:
+            final_mask |= mask[query_type]
+
+        indices_chunk = torch.cat(tuple(indices_chunk.values()), dim=1)
         dense_labels = torch.sparse.LongTensor(
             indices_chunk,
             # since all sparse label tensors have the same value we could also
             # create a new tensor here without indexing with:
             # torch.full([indices_chunk.shape[1]], float("inf"), device=self.device)
-            labels._values()[mask_sp | mask_po],
-            torch.Size([labels.size()[0], (chunk_end - chunk_start) * 2]),
+            labels._values()[final_mask],
+            torch.Size([labels.size()[0], total_chunk_size]),
         ).to_dense()
         return dense_labels
+
+        # mask_sp = (entity_chunk_start <= indices[1, :]) & (indices[1, :] < entity_chunk_end)
+        # mask_po = ((entity_chunk_start + num_entities) <= indices[1, :]) & (
+        #     indices[1, :] < (entity_chunk_end + num_entities)
+        # )
+        # indices_sp_chunk = indices[:, mask_sp]
+        # indices_sp_chunk[1, :] = indices_sp_chunk[1, :] - entity_chunk_start
+
+        # indices_po_chunk = indices[:, mask_po]
+        # indices_po_chunk[1, :] = (
+        #     indices_po_chunk[1, :] - num_entities - entity_chunk_start * 2 + entity_chunk_end
+        # )
+
+        # assert torch.equal(mask['sp_to_o'], mask_sp)
+        # assert torch.equal(mask['po_to_s'], mask_po)
+        # assert torch.equal(indices_chunk['sp_to_o'], indices_sp_chunk)
+        # assert torch.equal(indices_chunk['sp_to_o'], indices_sp_chunk)
+        
+
+        
+        
 
     def _filter_and_rank(
         self,
