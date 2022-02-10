@@ -335,25 +335,21 @@ class EntityRankingJob(EvaluationJob):
                     # compute partial ranking and filter the scores (sets scores of true
                     # labels to infinity)
                     (
-                        s_rank_chunk,
-                        s_num_ties_chunk,
-                        o_rank_chunk,
-                        o_num_ties_chunk,
-                        scores_sp_filt,
-                        scores_po_filt,
+                        rank_chunk,
+                        num_ties_chunk,
+                        scores_filt,
                     ) = self._filter_and_rank(
-                        scores_sp, scores_po, labels_chunk, o_true_scores, s_true_scores
+                        scores, labels_chunk, true_scores
                     )
 
                     # from now on, use filtered scores
-                    scores_sp = scores_sp_filt
-                    scores_po = scores_po_filt
+                    scores = scores_filt
 
                     # update rankings
-                    ranks_and_ties_for_ranking["s" + ranking][0] += s_rank_chunk
-                    ranks_and_ties_for_ranking["s" + ranking][1] += s_num_ties_chunk
-                    ranks_and_ties_for_ranking["o" + ranking][0] += o_rank_chunk
-                    ranks_and_ties_for_ranking["o" + ranking][1] += o_num_ties_chunk
+                    for query_type in self.query_types:
+                        pred_e = query_type[-1]
+                        ranks_and_ties_for_ranking[pred_e + ranking][0] += rank_chunk[query_type]
+                        ranks_and_ties_for_ranking[pred_e + ranking][1] += num_ties_chunk[query_type]
 
                 # we are done with the chunk
 
@@ -610,18 +606,12 @@ class EntityRankingJob(EvaluationJob):
         # assert torch.equal(mask['po_to_s'], mask_po)
         # assert torch.equal(indices_chunk['sp_to_o'], indices_sp_chunk)
         # assert torch.equal(indices_chunk['sp_to_o'], indices_sp_chunk)
-        
-
-        
-        
 
     def _filter_and_rank(
         self,
-        scores_sp: torch.Tensor,
-        scores_po: torch.Tensor,
+        scores: dict,
         labels: torch.Tensor,
-        o_true_scores: torch.Tensor,
-        s_true_scores: torch.Tensor,
+        true_scores: dict
     ):
         """Filters the current examples with the given labels and returns counts rank and
 num_ties for each true score.
@@ -642,16 +632,18 @@ num_ties for each true score.
         scores_sp and scores_po
 
         """
-        chunk_size = scores_sp.shape[1]
-        if labels is not None:
+        previous_size = 0
+        rank = {}
+        num_ties = {}
+        for query_type in self.query_types:
             # remove current example from labels
-            labels_sp = labels[:, :chunk_size]
-            labels_po = labels[:, chunk_size:]
-            scores_sp = scores_sp - labels_sp
-            scores_po = scores_po - labels_po
-        o_rank, o_num_ties = self._get_ranks_and_num_ties(scores_sp, o_true_scores)
-        s_rank, s_num_ties = self._get_ranks_and_num_ties(scores_po, s_true_scores)
-        return s_rank, s_num_ties, o_rank, o_num_ties, scores_sp, scores_po
+            if labels is not None:
+                chunk_size = scores[query_type].shape[1]
+                labels_query = labels[:, previous_size : previous_size + chunk_size]
+                scores[query_type] = scores[query_type] - labels_query
+                previous_size += chunk_size
+            rank[query_type], num_ties[query_type] = self._get_ranks_and_num_ties(scores[query_type], true_scores[query_type])
+        return rank, num_ties, scores
 
     def _get_ranks_and_num_ties(
         self, scores: torch.Tensor, true_scores: torch.Tensor
