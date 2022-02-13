@@ -326,9 +326,9 @@ KvsAll:
 
   # Weigth for each query
   query_weight:
-      _po: 1
-      s_o: 1
-      sp_: 1
+      _po: 1.0
+      s_o: 1.0
+      sp_: 1.0
 
 # Options for negative sampling training (train.type=="negative_sampling")
 negative_sampling:
