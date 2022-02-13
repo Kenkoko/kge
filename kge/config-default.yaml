@@ -532,6 +532,8 @@ entity_ranking:
   # certain more specific metrics can be computed in addition.
   metrics_per:
     head_and_tail: False          # head, tail; also applied to relation_type below
+    relation_prediction: False    # relation; also applied to relation_type below
+    entity_prediction: False      # entity 
     relation_type: False          # 1-to-1, 1-to-N, N-to-1, N-to-N
     argument_frequency: False     # 25%, 50%, 75%, top quantiles per argument
 

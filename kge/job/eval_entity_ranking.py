@@ -47,6 +47,12 @@ class EntityRankingJob(EvaluationJob):
 
         #: Whether to create additional histograms for head and tail slot
         self.head_and_tail = config.get("entity_ranking.metrics_per.head_and_tail")
+        #: Whether to create additional histograms for relation prediction
+        self.relation_prediction = config.get("entity_ranking.metrics_per.relation_prediction")
+        if self.relation_prediction: assert 'so_to_p' in self.query_types
+        #: Whether to create additional histograms for entity prediction
+        self.entity_prediction = config.get("entity_ranking.metrics_per.entity_prediction")
+        if self.entity_prediction: assert 'sp_to_o' in self.query_types and 'po_to_s' in self.query_types
 
         #: Hooks after computing the ranks for each batch entry.
         #: Signature: hists, s, p, o, s_ranks, o_ranks, job, **kwargs
@@ -224,7 +230,7 @@ class EntityRankingJob(EvaluationJob):
                         unique_s_inverse.view(-1, 1),
                     ).view(-1)
                 if 'so_to_p' == query_type:
-                    unique_p, unique_p_inverse = torch.unique(s, return_inverse=True)
+                    unique_p, unique_p_inverse = torch.unique(p, return_inverse=True)
                     true_scores[query_type] = torch.gather(
                         self.model.score_so(s, o, unique_p),
                         1,
@@ -815,6 +821,21 @@ def hist_all(hists, s, p, o, ranks, job, **kwargs):
     for query_type in ranks.keys():
         ranks_unique, ranks_count = torch.unique(ranks[query_type], return_counts=True)
         hist.index_add_(0, ranks_unique, ranks_count.float())
+    
+    if job.relation_prediction:
+        __initialize_hist(hists, "relation", job)
+        hist_relation = hists['relation']
+        ranks_unique, ranks_count = torch.unique(ranks['so_to_p'], return_counts=True)
+        hist_relation.index_add_(0, ranks_unique, ranks_count.float())
+
+    if job.entity_prediction:
+        __initialize_hist(hists, "entity", job)
+        hist_entity = hists['entity']
+        o_ranks_unique, o_ranks_count = torch.unique(ranks['sp_to_o'], return_counts=True)
+        s_ranks_unique, s_ranks_count = torch.unique(ranks['po_to_s'], return_counts=True)
+        hist_entity.index_add_(0, o_ranks_unique, o_ranks_count.float())
+        hist_entity.index_add_(0, s_ranks_unique, s_ranks_count.float())
+
     if job.head_and_tail:
         ranks_unique, ranks_count = torch.unique(ranks['sp_to_o'], return_counts=True)
         hist_tail.index_add_(0, ranks_unique, ranks_count.float())
@@ -831,10 +852,13 @@ def hist_per_relation_type(hists, s, p, o, ranks, job, **kwargs):
             __initialize_hist(hists, f"{rel_type}_tail", job)
             hist_head = hists[f"{rel_type}_head"]
             hist_tail = hists[f"{rel_type}_tail"]
+        if job.relation_prediction:
+             __initialize_hist(hists, f"{rel_type}_relation", job)
+             hist_relation = hists[f"{rel_type}_relation"]
 
         o_ranks = ranks['sp_to_o']
         s_ranks = ranks['po_to_s']
-
+        p_ranks = ranks['so_to_p']
         mask = [_p in rels for _p in p.tolist()]
         for r, m in zip(o_ranks, mask):
             if m:
@@ -847,6 +871,14 @@ def hist_per_relation_type(hists, s, p, o, ranks, job, **kwargs):
                 hists[rel_type][r] += 1
                 if job.head_and_tail:
                     hist_head[r] += 1
+        
+        if 'so_to_p' in ranks.keys():
+            p_ranks = ranks['so_to_p']
+            for r, m in zip(p_ranks, mask):
+                if m:
+                    hists[rel_type][r] += 1
+                    if job.relation_prediction:
+                        hist_relation[r] += 1
 
 
 def hist_per_frequency_percentile(hists, s, p, o, ranks, job, **kwargs):
