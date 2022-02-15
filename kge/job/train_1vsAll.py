@@ -18,6 +18,7 @@ class TrainingJob1vsAll(TrainingJob):
         )
         config.log("Initializing spo training job...")
         self.type_str = "1vsAll"
+        
 
         if self.__class__ == TrainingJob1vsAll:
             for f in Job.job_created_hooks:
@@ -26,6 +27,15 @@ class TrainingJob1vsAll(TrainingJob):
     def _prepare(self):
         """Construct dataloader"""
         super()._prepare()
+
+        # determine enabled query types
+        self.query_types = [
+            key
+            for key, enabled in self.config.get("1vsAll.query_types").items()
+            if enabled
+        ]
+        # determine query weights
+        self.query_weight = self.config.get("1vsAll.query_weight")
 
         self.num_examples = self.dataset.split(self.train_split).size(0)
         self.loader = torch.utils.data.DataLoader(
@@ -60,23 +70,46 @@ class TrainingJob1vsAll(TrainingJob):
         result.prepare_time += time.time()
 
         # forward/backward pass (sp)
-        result.forward_time -= time.time()
-        scores_sp = self.model.score_sp(triples[:, 0], triples[:, 1])
-        loss_value_sp = self.loss(scores_sp, triples[:, 2]) / batch_size
-        result.avg_loss += loss_value_sp.item()
-        result.forward_time += time.time()
-        result.backward_time = -time.time()
-        if not self.is_forward_only:
-            loss_value_sp.backward()
-        result.backward_time += time.time()
+        if 'sp_' in self.query_types:
+            result.forward_time -= time.time()
+            scores_sp = self.model.score_sp(triples[:, 0], triples[:, 1])
+            loss_value_sp = self.loss(scores_sp, triples[:, 2]) / batch_size
+            # Apply query weight
+            weight = self.query_weight['sp_']
+            loss_value_sp = weight*loss_value_sp
+            result.avg_loss += loss_value_sp.item()
+            result.forward_time += time.time()
+            result.backward_time = -time.time()
+            if not self.is_forward_only:
+                loss_value_sp.backward()
+            result.backward_time += time.time()
 
         # forward/backward pass (po)
-        result.forward_time -= time.time()
-        scores_po = self.model.score_po(triples[:, 1], triples[:, 2])
-        loss_value_po = self.loss(scores_po, triples[:, 0]) / batch_size
-        result.avg_loss += loss_value_po.item()
-        result.forward_time += time.time()
-        result.backward_time -= time.time()
-        if not self.is_forward_only:
-            loss_value_po.backward()
-        result.backward_time += time.time()
+        if '_po' in self.query_types:
+            result.forward_time -= time.time()
+            scores_po = self.model.score_po(triples[:, 1], triples[:, 2])
+            loss_value_po = self.loss(scores_po, triples[:, 0]) / batch_size
+            # Apply query weight
+            weight = self.query_weight['_po']
+            loss_value_sp = weight*loss_value_sp
+            result.avg_loss += loss_value_po.item()
+            result.forward_time += time.time()
+            result.backward_time -= time.time()
+            if not self.is_forward_only:
+                loss_value_po.backward()
+            result.backward_time += time.time()
+
+        # forward/backward pass (so)
+        if 's_o' in self.query_types:
+            result.forward_time -= time.time()
+            scores_so = self.model.score_so(triples[:, 0], triples[:, 2])
+            loss_value_so = self.loss(scores_so, triples[:, 1]) / batch_size
+            # Apply query weight
+            weight = self.query_weight['s_o']
+            loss_value_so = weight*loss_value_so
+            result.avg_loss += loss_value_so.item()
+            result.forward_time += time.time()
+            result.backward_time -= time.time()
+            if not self.is_forward_only:
+                loss_value_so.backward()
+            result.backward_time += time.time()
