@@ -858,7 +858,7 @@ def hist_per_relation_type(hists, s, p, o, ranks, job, **kwargs):
 
         o_ranks = ranks['sp_to_o']
         s_ranks = ranks['po_to_s']
-        p_ranks = ranks['so_to_p']
+
         mask = [_p in rels for _p in p.tolist()]
         for r, m in zip(o_ranks, mask):
             if m:
@@ -871,7 +871,7 @@ def hist_per_relation_type(hists, s, p, o, ranks, job, **kwargs):
                 hists[rel_type][r] += 1
                 if job.head_and_tail:
                     hist_head[r] += 1
-        
+
         if 'so_to_p' in ranks.keys():
             p_ranks = ranks['so_to_p']
             for r, m in zip(p_ranks, mask):
