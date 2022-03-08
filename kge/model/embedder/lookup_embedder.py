@@ -42,6 +42,7 @@ class LookupEmbedder(KgeEmbedder):
             # initialize weights
             self.initialize(self._embeddings.weight.data)
             self._normalize_embeddings()
+            self._embeddings.weight.data *= self.initial_scale
 
         # TODO handling negative dropout because using it with ax searches for now
         dropout = self.get_option("dropout")

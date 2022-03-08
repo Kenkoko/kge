@@ -253,6 +253,7 @@ class KgeEmbedder(KgeBase):
                 )
 
         self.dim: int = self.get_option("dim")
+        self.initial_scale: float = self.get_option("initial_scale")
 
     @staticmethod
     def create(

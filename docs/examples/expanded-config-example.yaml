@@ -88,6 +88,7 @@ lookup_embedder:
   class_name: LookupEmbedder
   dim: 100
   dropout: 0.0
+  initial_scale: 1.0
   initialize: normal_
   initialize_args:
     +++: +++

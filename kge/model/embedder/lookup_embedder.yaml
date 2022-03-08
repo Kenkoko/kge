@@ -6,6 +6,8 @@ lookup_embedder:
   # Dimensionality of the embedding
   dim: 100
 
+  # Initial scale
+  initial_scale: 1.0
   # The initializer used to initialzed the embeddings. See
   # https://pytorch.org/docs/stable/nn.init.html for details. Example values
   # include xavier_uniform_, xavier_normal_, uniform_, and normal_.
