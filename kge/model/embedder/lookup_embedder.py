@@ -1,3 +1,4 @@
+from kge.model.complex import ComplEx
 from torch import Tensor
 import torch.nn
 import torch.nn.functional
@@ -129,12 +130,22 @@ class LookupEmbedder(KgeEmbedder):
                         (regularize_weight / p * parameters.norm(p=p) ** p).sum(),
                     )
                 ]
+                print('regularize_weight', regularize_weight)
             else:
                 # weighted Lp regularization
                 unique_indexes, counts = torch.unique(
                     kwargs["indexes"], return_counts=True
                 )
                 parameters = self._embeddings(unique_indexes)
+
+                ## Apply to ComplEx model
+                if isinstance(kwargs['model'], ComplEx):
+                    # print('It is ComplEx')
+                    rank = int(self.dim / 2)
+                    # print('rank', rank)
+                    parameters = parameters[:, :rank], parameters[:, rank:]
+                    parameters = torch.sqrt(parameters[0] ** 2 + parameters[1] ** 2)
+
                 if p % 2 == 1:
                     parameters = torch.abs(parameters)
                 result += [
@@ -151,6 +162,7 @@ class LookupEmbedder(KgeEmbedder):
                         / len(kwargs["indexes"]),
                     )
                 ]
+                # print('regularize_weight', regularize_weight)
         else:  # unknown regularization
             raise ValueError(f"Invalid value regularize={self.regularize}")
 

@@ -418,6 +418,7 @@ class TrainingJob(TrainingOrEvaluationJob):
                 batch_index=batch_index,
                 num_batches=len(self.loader),
                 batch=batch,
+                model = self.model
             )
             batch_forward_time += time.time()
 
