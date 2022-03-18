@@ -34,6 +34,7 @@ class TrainingJob1vsAll(TrainingJob):
             for key, enabled in self.config.get("1vsAll.query_types").items()
             if enabled
         ]
+        
         # determine query weights
         self.query_weight = self.config.get("1vsAll.query_weight")
 
@@ -70,7 +71,10 @@ class TrainingJob1vsAll(TrainingJob):
         result.prepare_time += time.time()
 
         # forward/backward pass (sp)
+        print('query_types:', self.query_types)
+        print('sp_ in self.query_types:', 'sp_' in self.query_types)
         if 'sp_' in self.query_types:
+
             result.forward_time -= time.time()
             scores_sp = self.model.score_sp(triples[:, 0], triples[:, 1])
             loss_value_sp = self.loss(scores_sp, triples[:, 2]) / batch_size
@@ -91,7 +95,7 @@ class TrainingJob1vsAll(TrainingJob):
             loss_value_po = self.loss(scores_po, triples[:, 0]) / batch_size
             # Apply query weight
             weight = self.query_weight['_po']
-            loss_value_sp = weight*loss_value_sp
+            loss_value_po = weight*loss_value_po
             result.avg_loss += loss_value_po.item()
             result.forward_time += time.time()
             result.backward_time -= time.time()
