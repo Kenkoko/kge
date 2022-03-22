@@ -139,12 +139,12 @@ class LookupEmbedder(KgeEmbedder):
                 parameters = self._embeddings(unique_indexes)
 
                 ## Apply to ComplEx model
-                if isinstance(kwargs['model'], ComplEx):
-                    # print('It is ComplEx')
-                    rank = int(self.dim / 2)
-                    # print('rank', rank)
-                    parameters = parameters[:, :rank], parameters[:, rank:]
-                    parameters = torch.sqrt(parameters[0] ** 2 + parameters[1] ** 2)
+                # if isinstance(kwargs['model'], ComplEx):
+                #     # print('It is ComplEx')
+                #     rank = int(self.dim / 2)
+                #     # print('rank', rank)
+                #     parameters = parameters[:, :rank], parameters[:, rank:]
+                #     parameters = torch.sqrt(parameters[0] ** 2 + parameters[1] ** 2)
 
                 if p % 2 == 1:
                     parameters = torch.abs(parameters)
