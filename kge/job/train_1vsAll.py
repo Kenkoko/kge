@@ -71,8 +71,6 @@ class TrainingJob1vsAll(TrainingJob):
         result.prepare_time += time.time()
 
         # forward/backward pass (sp)
-        print('query_types:', self.query_types)
-        print('sp_ in self.query_types:', 'sp_' in self.query_types)
         if 'sp_' in self.query_types:
 
             result.forward_time -= time.time()

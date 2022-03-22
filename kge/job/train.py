@@ -438,6 +438,8 @@ class TrainingJob(TrainingOrEvaluationJob):
 
             # abort on nan
             if self.abort_on_nan and math.isnan(cost_value):
+                print('batch_result.avg_loss', batch_result.avg_loss)
+                print('penalty', penalty)
                 raise FloatingPointError("Cost became nan, aborting training job")
 
             # TODO # visualize graph
