@@ -79,7 +79,14 @@ class ReciprocalRelationsModel(KgeModel):
         return self._scorer.score_emb(o, p, s, combine="sp_")
 
     def score_so(self, s, o, p=None):
-        raise Exception("The reciprocal relations model cannot score relations.")
+        # raise Exception("The reciprocal relations model cannot score relations.")
+        if p is None:
+            p = self.get_p_embedder().embed_all()
+        else:
+            p = self.get_p_embedder().embed(p + self.dataset.num_relations())
+        s = self.get_s_embedder().embed(s)
+        o = self.get_o_embedder().embed(o)
+        return self._scorer.score_emb(o, p, s, combine="s_o")
 
     def score_sp_po(
         self,
