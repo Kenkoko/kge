@@ -83,7 +83,7 @@ class ReciprocalRelationsModel(KgeModel):
         if p is None:
             p = self.get_p_embedder().embed_all()
         else:
-            p = self.get_p_embedder().embed(p + self.dataset.num_relations())
+            p = self.get_p_embedder().embed(p)
         s = self.get_s_embedder().embed(s)
         o = self.get_o_embedder().embed(o)
         return self._scorer.score_emb(o, p, s, combine="s_o")
