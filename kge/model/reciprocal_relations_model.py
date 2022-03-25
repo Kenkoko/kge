@@ -86,7 +86,23 @@ class ReciprocalRelationsModel(KgeModel):
             p = self.get_p_embedder().embed(p)
         s = self.get_s_embedder().embed(s)
         o = self.get_o_embedder().embed(o)
-        return self._scorer.score_emb(o, p, s, combine="s_o")
+        
+        # p_emb_re, p_emb_im = (t.contiguous() for t in p.chunk(2, dim=1))
+        # s_emb_re, s_emb_im = (t.contiguous() for t in s.chunk(2, dim=1))
+        # o_emb_re, o_emb_im = (t.contiguous() for t in o.chunk(2, dim=1))
+
+        # rel_score = (
+        #     (s_emb_re * o_emb_re + s_emb_im * o_emb_im) @ p_emb_re.transpose(0, 1) +
+        #     (s_emb_re * o_emb_im - s_emb_im * o_emb_re) @ p_emb_im.transpose(0, 1)
+        # )
+
+        # # assert torch.equal(rel_score, self._scorer.score_emb(p, s, o, combine="_po"))
+        # print('rel_score', rel_score)
+        # print('score_emb', self._scorer.score_emb(p, s, o, combine="_po"))
+        # assert torch.equal(rel_score, self._scorer.score_emb(p, s, o, combine="_po"))
+        # print(torch.equal(rel_score, self._scorer.score_emb(p, s, o, combine="_po"))) 
+
+        return self._scorer.score_emb(p, s, o, combine="_po")
 
     def score_sp_po(
         self,

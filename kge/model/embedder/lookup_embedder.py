@@ -1,3 +1,4 @@
+from kge.model.reciprocal_relations_model import ReciprocalRelationsModel
 from torch import Tensor
 import torch.nn
 import torch.nn.functional
@@ -135,6 +136,9 @@ class LookupEmbedder(KgeEmbedder):
                     kwargs["indexes"], return_counts=True
                 )
                 parameters = self._embeddings(unique_indexes)
+                if isinstance(kwargs['model'], ReciprocalRelationsModel):
+                    parameters_re, parameters_im = (t.contiguous() for t in parameters.chunk(2, dim=1))
+                    parameters = torch.sqrt(parameters_re ** 2 + parameters_im ** 2)
                 if p % 2 == 1:
                     parameters = torch.abs(parameters)
                 result += [
