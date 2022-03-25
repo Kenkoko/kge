@@ -146,7 +146,7 @@ class LookupEmbedder(KgeEmbedder):
                         f"{self.configuration_key}.L{p}_penalty",
                         (
                             regularize_weight
-                            / p
+                            # / p
                             * (parameters ** p * counts.float().view(-1, 1))
                         ).sum()
                         # In contrast to unweighted Lp regularization, rescaling by
