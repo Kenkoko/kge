@@ -26,7 +26,7 @@ class LookupEmbedder(KgeEmbedder):
 
         # read config
         self.normalize_p = self.get_option("normalize.p")
-        self.regularize = self.check_option("regularize", ["", "lp"])
+        self.regularize = self.check_option("regularize", ["", "lp", 'N3'])
         self.sparse = self.get_option("sparse")
         self.config.check("train.trace_level", ["batch", "epoch"])
         self.vocab_size = vocab_size
@@ -155,7 +155,21 @@ class LookupEmbedder(KgeEmbedder):
                         / len(kwargs["indexes"]),
                     )
                 ]
+        elif self.regularize == "N3":
+            # print('kwargs["indexes"]', kwargs["indexes"])
+            # print('kwargs["indexes"].shape', kwargs["indexes"].shape)
+            # print('kwargs["batch"]', kwargs["batch"])
+            # print('self._embeddings', self._embeddings)
+            regularize_weight = self._get_regularize_weight()
+            parameters = self._embeddings(kwargs["indexes"])
+            parameters_re, parameters_im = (t.contiguous() for t in parameters.chunk(2, dim=1))
+            parameters = torch.sqrt(parameters_re ** 2 + parameters_im ** 2)
+            result += [
+                (
+                    f"{self.configuration_key}.N3_penalty",
+                    regularize_weight*( (torch.abs(parameters) ** 3).sum()) / len(kwargs["indexes"]) ,
+                )
+            ]
         else:  # unknown regularization
             raise ValueError(f"Invalid value regularize={self.regularize}")
-
         return result

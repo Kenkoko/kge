@@ -612,20 +612,23 @@ class KgeModel(KgeBase):
             )
             if self.get_s_embedder() is self.get_o_embedder():
                 weighted = self.get_s_embedder().get_option("regularize_args.weighted")
-                entity_indexes = None
-                if weighted:
-                    entity_indexes = torch.cat(
-                        (triples[:, S].view(-1, 1), triples[:, O].view(-1, 1)), dim=1
-                    )
-                entity_penalty_result = self.get_s_embedder().penalty(
-                    indexes=entity_indexes, **kwargs,
+                # entity_indexes = None
+                # if weighted:
+                #     entity_indexes = torch.cat(
+                #         (triples[:, S].view(-1, 1), triples[:, O].view(-1, 1)), dim=1
+                #     )
+                penalty_result += self.get_s_embedder().penalty(
+                    indexes=triples[:, S], **kwargs
                 )
-                if not weighted:
-                    # backwards compatibility
-                    for penalty in entity_penalty_result:
-                        for p in penalty:
-                            p *= 2
-                penalty_result += entity_penalty_result
+                penalty_result += self.get_o_embedder().penalty(
+                    indexes=triples[:, O], **kwargs
+                )
+                # if not weighted:
+                #     # backwards compatibility
+                #     for penalty in entity_penalty_result:
+                #         for p in penalty:
+                #             p *= 2
+                # penalty_result += entity_penalty_result
             else:
                 penalty_result += self.get_s_embedder().penalty(
                     indexes=triples[:, S], **kwargs
