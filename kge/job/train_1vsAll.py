@@ -107,6 +107,7 @@ class TrainingJob1vsAll(TrainingJob):
         if 's_o' in self.query_types:
             result.forward_time -= time.time()
             scores_so = self.model.score_so(triples[:, 0], triples[:, 2])
+            
             loss_value_so = self.loss(scores_so, triples[:, 1]) / batch_size
             # Apply query weight
             weight = self.query_weight['s_o']
@@ -121,7 +122,7 @@ class TrainingJob1vsAll(TrainingJob):
             ## forward/backward pass (os)
             result.forward_time -= time.time()
             scores_os = self.model.score_so(triples[:, 2], triples[:, 0])
-            loss_value_os = self.loss(scores_os, triples[:, 1]) / batch_size
+            loss_value_os = self.loss(scores_os, triples[:, 1] + self.dataset.num_relations()) / batch_size
             # Apply query weight
             weight = self.query_weight['s_o']
             loss_value_os = weight*loss_value_os
