@@ -25,7 +25,7 @@ class LookupEmbedder(KgeEmbedder):
 
         # read config
         self.normalize_p = self.get_option("normalize.p")
-        self.regularize = self.check_option("regularize", ["", "lp"])
+        self.regularize = self.check_option("regularize", ["", "lp", "N3"])
         self.sparse = self.get_option("sparse")
         self.config.check("train.trace_level", ["batch", "epoch"])
         self.vocab_size = vocab_size
@@ -149,6 +149,18 @@ class LookupEmbedder(KgeEmbedder):
                         # number of triples/indexes is necessary here so that penalty
                         # term is correct in expectation
                         / len(kwargs["indexes"]),
+                    )
+                ]
+        elif self.regularize == "N3":
+            regularize_weight = self._get_regularize_weight()
+            if not self.get_option("regularize_args.weighted"):
+                raise NotImplementedError(f"unweighted {self.regularize} regularization not implemented")
+            else:
+                parameters = self._embeddings(kwargs["indexes"])
+                result += [
+                    (
+                        f"{self.configuration_key}.N3_penalty",
+                        regularize_weight*( (torch.abs(parameters) ** 3).sum()) / len(kwargs["indexes"]) ,
                     )
                 ]
         else:  # unknown regularization
