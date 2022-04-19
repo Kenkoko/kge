@@ -5,6 +5,7 @@ import torch.utils.data
 
 from kge.job import Job
 from kge.job.train import TrainingJob, _generate_worker_init_fn
+from kge.model.reciprocal_relations_model import ReciprocalRelationsModel
 
 
 class TrainingJob1vsAll(TrainingJob):
@@ -115,3 +116,18 @@ class TrainingJob1vsAll(TrainingJob):
             if not self.is_forward_only:
                 loss_value_so.backward()
             result.backward_time += time.time()
+
+            ## forward/backward pass (os)
+            if isinstance(self.model, ReciprocalRelationsModel):
+                result.forward_time -= time.time()
+                scores_os = self.model.score_so(triples[:, 2], triples[:, 0])
+                loss_value_os = self.loss(scores_os, triples[:, 1] + self.dataset.num_relations()) / batch_size
+                # Apply query weight
+                weight = self.query_weight['s_o']
+                loss_value_os = weight*loss_value_os
+                result.avg_loss += loss_value_os.item()
+                result.forward_time += time.time()
+                result.backward_time -= time.time()
+                if not self.is_forward_only:
+                    loss_value_os.backward()
+                result.backward_time += time.time()
