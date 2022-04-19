@@ -80,3 +80,5 @@ lookup_embedder:
 
   # Will be deprecated.
   round_dim_to: []
+
+  AKBC_factors: False

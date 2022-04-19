@@ -8,7 +8,8 @@ from kge.model import KgeEmbedder
 from kge.misc import round_to_points
 
 from typing import List
-
+from kge.model.complex import ComplEx
+from kge.model.reciprocal_relations_model import ReciprocalRelationsModel
 
 class LookupEmbedder(KgeEmbedder):
     def __init__(
@@ -108,9 +109,27 @@ class LookupEmbedder(KgeEmbedder):
     def _get_regularize_weight(self) -> Tensor:
         return self.get_option("regularize_weight")
 
+    def get_AKBC_factors(self, parameters, model) -> List[Tensor]:
+
+        # check if we have a ComplEX model
+        if isinstance(model, ReciprocalRelationsModel):
+            if isinstance(model._base_model, ComplEx):
+                is_complex = True
+        elif isinstance(model, ComplEx):
+            is_complex = True
+        else:
+            is_complex = False
+
+        if not is_complex:
+            return parameters
+        parameters_re, parameters_im = (t.contiguous() for t in parameters.chunk(2, dim=1))
+        parameters = torch.sqrt(parameters_re ** 2 + parameters_im ** 2)
+        return parameters
+
     def penalty(self, **kwargs) -> List[Tensor]:
         # TODO factor out to a utility method
         result = super().penalty(**kwargs)
+        AKBC_factors = self.get_option("AKBC_factors")
         if self.regularize == "" or self.get_option("regularize_weight") == 0.0:
             pass
         elif self.regularize == "lp":
@@ -123,6 +142,8 @@ class LookupEmbedder(KgeEmbedder):
             if not self.get_option("regularize_args.weighted"):
                 # unweighted Lp regularization
                 parameters = self._embeddings_all()
+                if AKBC_factors:
+                    parameters = self.get_AKBC_factors(parameters, kwargs['model'])
                 result += [
                     (
                         f"{self.configuration_key}.L{p}_penalty",
@@ -135,6 +156,8 @@ class LookupEmbedder(KgeEmbedder):
                     kwargs["indexes"], return_counts=True
                 )
                 parameters = self._embeddings(unique_indexes)
+                if AKBC_factors:
+                    parameters = self.get_AKBC_factors(parameters, kwargs['model'])
                 if p % 2 == 1:
                     parameters = torch.abs(parameters)
                 result += [
