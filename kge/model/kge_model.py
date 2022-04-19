@@ -610,6 +610,11 @@ class KgeModel(KgeBase):
             penalty_result = super().penalty(**kwargs) + self.get_p_embedder().penalty(
                 indexes=triples[:, P], **kwargs
             )
+            if kwargs["is_reciprocal_model"]:
+                indexes = triples[:, P] + int(self.dataset.num_relations() / 2)
+                penalty_result += self.get_p_embedder().penalty(
+                    indexes=indexes, **kwargs
+                )
             if self.get_s_embedder() is self.get_o_embedder():
                 weighted = self.get_s_embedder().get_option("regularize_args.weighted")
                 entity_indexes = None
