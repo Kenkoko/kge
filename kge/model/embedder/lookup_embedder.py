@@ -180,6 +180,8 @@ class LookupEmbedder(KgeEmbedder):
                 raise NotImplementedError(f"unweighted {self.regularize} regularization not implemented")
             else:
                 parameters = self._embeddings(kwargs["indexes"])
+                if AKBC_factors:
+                    parameters = self.get_AKBC_factors(parameters, kwargs['model'])
                 result += [
                     (
                         f"{self.configuration_key}.N3_penalty",
