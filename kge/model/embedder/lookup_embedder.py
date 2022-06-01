@@ -123,7 +123,7 @@ class LookupEmbedder(KgeEmbedder):
         if not is_complex:
             return parameters
         parameters_re, parameters_im = (t.contiguous() for t in parameters.chunk(2, dim=1))
-        parameters = torch.sqrt(parameters_re ** 2 + parameters_im ** 2)
+        parameters = torch.sqrt(parameters_re ** 2 + parameters_im ** 2 + 1e-14) # + 1e-14 to avoid NaN: https://github.com/lilanxiao/Rotated_IoU/issues/20
         return parameters
 
     def penalty(self, **kwargs) -> List[Tensor]:
