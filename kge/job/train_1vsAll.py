@@ -39,6 +39,9 @@ class TrainingJob1vsAll(TrainingJob):
         # determine query weights
         self.query_weight = self.config.get("1vsAll.query_weight")
 
+        # determine relation weights
+        self.relation_weight = self.config.get("1vsAll.relation_weight")
+
         self.num_examples = self.dataset.split(self.train_split).size(0)
         self.loader = torch.utils.data.DataLoader(
             range(self.num_examples),
@@ -106,7 +109,21 @@ class TrainingJob1vsAll(TrainingJob):
         if 's_o' in self.query_types:
             result.forward_time -= time.time()
             scores_so = self.model.score_so(triples[:, 0], triples[:, 2])
-            loss_value_so = self.loss(scores_so, triples[:, 1]) / batch_size
+
+            # Apply relation weight
+            loss_value_so = 0
+            relation_ids = triples[:, 1].tolist()
+            for rel_type, rels in self.dataset.index("relations_per_type").items():
+                indices = [index for index, id in enumerate(relation_ids) if id in rels]
+                indices = torch.Tensor(indices).long().to(self.device)
+                selected_scores = torch.index_select(scores_so, 0, indices)
+                selected_triples = torch.index_select(triples[:, 1], 0, indices)
+                weight = self.relation_weight[rel_type]
+                loss_value_so += weight*self.loss(selected_scores, selected_triples)
+
+            loss_value_so = loss_value_so / batch_size
+            # loss_value_so = self.loss(scores_so, triples[:, 1]) / batch_size
+
             # Apply query weight
             weight = self.query_weight['s_o']
             loss_value_so = weight*loss_value_so

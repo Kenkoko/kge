@@ -314,6 +314,12 @@ train:
     s_o: 1.0
     sp_: 1.0
 
+  relation_weight:
+    1-1: 1.0
+    1-N: 1.0
+    M-1: 1.0
+    M-N: 1.0
+
 # Options for KvsAll training (train.type=="KvsAll")
 KvsAll:
   class_name: TrainingJobKvsAll
