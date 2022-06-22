@@ -9,7 +9,7 @@ import kge.job
 from kge.job import EvaluationJob, Job
 from kge import Config, Dataset
 from collections import defaultdict
-
+from kge.model.reciprocal_relations_model import ReciprocalRelationsModel
 
 class EntityRankingJob(EvaluationJob):
     """ Entity ranking evaluation protocol """
@@ -119,6 +119,8 @@ class EntityRankingJob(EvaluationJob):
     def _evaluate(self):
         num_entities = self.dataset.num_entities()
         num_relations = self.dataset.num_relations()
+        if isinstance(self.model, ReciprocalRelationsModel):
+            num_relations = num_relations * 2
 
         # number of total entries 
         num_elements = 0
@@ -146,6 +148,10 @@ class EntityRankingJob(EvaluationJob):
         hists = dict()
         hists_filt = dict()
         hists_filt_test = dict()
+        
+        all_ranks = dict()
+        all_ranks_filt = dict()
+        all_ranks_filt_test = dict()
 
         # create initial trace entry
         self.current_trace["epoch"] = dict(
@@ -266,8 +272,14 @@ class EntityRankingJob(EvaluationJob):
                 entity_chunk_end = min(entity_chunk_size * (chunk_number + 1), num_entities)
                 relation_chunk_start = relation_chunk_size * chunk_number
                 relation_chunk_end = min(relation_chunk_size * (chunk_number + 1), num_relations)
-
-                # compute scores of chunk
+                if relation_chunk_start > relation_chunk_end:
+                    print('relation_chunk_size', relation_chunk_size)
+                    print('relation_chunk_start', relation_chunk_start)
+                    print('relation_chunk_end', relation_chunk_end)
+                    print('num_relations', num_relations)
+                    error_message = f'relation_chunk_start ({relation_chunk_start}) > relation_chunk_end ({relation_chunk_end}) - relation_chunk_size ({relation_chunk_size}) and num_chunks ({num_chunks})'
+                    raise ValueError(error_message)
+                # compute scoresrelation_chunk_start of chunk
                 (
                     scores,
                     e_in_chunk_mask,
@@ -343,7 +355,11 @@ class EntityRankingJob(EvaluationJob):
                         labels_chunk[
                             e_in_chunk_mask['po_to_s'], e_in_chunk['po_to_s'] + (entity_chunk_end - entity_chunk_start)
                         ] = 0
-
+                        if 'so_to_p' in self.query_types:
+                            labels_chunk[
+                                e_in_chunk_mask['so_to_p'], 
+                                e_in_chunk['so_to_p'] + (entity_chunk_end - entity_chunk_start)*2 
+                            ] = 0
                     # compute partial ranking and filter the scores (sets scores of true
                     # labels to infinity)
                     (
@@ -516,11 +532,31 @@ class EntityRankingJob(EvaluationJob):
                         target_hists[key] = target_hists[key] + hist
                     else:
                         target_hists[key] = hist
-
+            def merge_rank(target_ranks, source_ranks):
+                for key, rank in source_ranks.items():
+                    if key in target_ranks:
+                        target_ranks[key] = torch.cat((target_ranks[key], rank), 0)
+                    else:
+                        target_ranks[key] = rank
+            
             merge_hist(hists, batch_hists)
             merge_hist(hists_filt, batch_hists_filt)
             if filter_with_test:
                 merge_hist(hists_filt_test, batch_hists_filt_test)
+
+            merge_rank(all_ranks, ranks)
+            merge_rank(all_ranks_filt, ranks_filt)
+            if filter_with_test:
+                merge_rank(all_ranks_filt_test, ranks_filt_test)
+            
+
+        self.hists = hists
+        self.hists_filt = hists_filt
+        self.hists_filt_test = hists_filt_test
+        
+        self.all_ranks = all_ranks
+        self.all_ranks_filt = all_ranks_filt
+        self.all_ranks_filt_test = all_ranks_filt_test
 
         # we are done; compute final metrics
         self.config.print("\033[2K\r", end="", flush=True)  # clear line and go back
@@ -585,12 +621,12 @@ class EntityRankingJob(EvaluationJob):
             mask[query_type] = (start_point + chunk_start <= indices[1, :]) & (indices[1, :] < start_point + chunk_end)
             indices_chunk[query_type] = indices[:, mask[query_type]]
             indices_chunk[query_type][1, :] = (
-                indices_chunk[query_type][1, :] - chunk_start - previous_elements + previous_chunk_size 
+                indices_chunk[query_type][1, :] - chunk_start - previous_elements + total_chunk_size 
                 )
 
             previous_elements += num_relations if query_type == 'so_to_p' else num_entities
-            start_point += previous_elements
             previous_chunk_size = chunk_end - chunk_start
+            start_point += num_relations if query_type == 'so_to_p' else num_entities
             total_chunk_size += previous_chunk_size
 
         final_mask = mask[self.query_types[0]]
